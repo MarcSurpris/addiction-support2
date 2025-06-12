@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+
+{% block content %}
+    <h2>Share Your Struggle</h2>
+    <form method="POST">
+        <label for="addiction_type">Type of Addiction:</label>
+        <select id="addiction_type" name="addiction_type" required>
+            <option value="">Select...</option>
+            <option value="porn">Pornography</option>
+            <option value="drugs">Drugs</option>
+            <option value="alcohol">Alcohol</option>
+        </select>
+
+        <label for="description">Describe Your Struggle:</label>
+        <textarea id="description" name="description" rows="4" required></textarea>
+
+        <button type="submit">Submit</button>
+    </form>
+
+    <h2>Your Entries</h2>
+    {% if entries %}
+        {% for entry in entries %}
+            <div class="entry">
+                <p><strong>Type:</strong> {{ entry.addiction_type.capitalize() }}</p>
+                <p><strong>Struggle:</strong> {{ entry.description }}</p>
+                <p><strong>Support Response:</strong> {{ entry.response }}</p>
+                <p><small>Posted on: {{ entry.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</small></p>
+            </div>
+        {% endfor %}
+    {% else %}
+        <p>No entries yet. Share your struggle above to get support.</p>
+    {% endif %}
+{% endblock %}
