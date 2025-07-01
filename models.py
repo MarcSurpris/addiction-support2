@@ -1,18 +1,22 @@
 from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy import Column, Integer, String, Text, DateTime
 from flask_login import UserMixin
+import datetime
 
 db = SQLAlchemy()
 
-class User(UserMixin, db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    username = db.Column(db.String(80), unique=True, nullable=False)
-    password_hash = db.Column(db.String(120), nullable=False)
+class User(db.Model, UserMixin):
+    __tablename__ = 'user'
+    id = Column(Integer, primary_key=True)
+    username = Column(String(120), unique=True, nullable=False)
+    password_hash = Column(Text, nullable=False)  # Use Text to avoid length issues
 
 class Entry(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    addiction_type = db.Column(db.String(100), nullable=False)
-    description = db.Column(db.Text, nullable=False)
-    response = db.Column(db.Text, nullable=False)
-    created_at = db.Column(db.DateTime, default=db.func.current_timestamp())
-    user = db.relationship('User', backref=db.backref('entries', lazy=True))
+    __tablename__ = 'entry'
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, nullable=False)
+    addiction_type = Column(String(100), nullable=False)
+    description = Column(String(1000), nullable=False)
+    response = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+

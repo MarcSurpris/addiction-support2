@@ -1,13 +1,14 @@
 from flask import Flask, render_template, request, redirect, url_for, flash
-from flask_sqlalchemy import SQLAlchemy
-from flask_login import LoginManager, login_user, login_required, logout_user, current_user
+from flask_login import LoginManager, login_user, login_required, logout_user, current_user, UserMixin
 from flask_migrate import Migrate
 from werkzeug.security import generate_password_hash, check_password_hash
 import requests
 from dotenv import load_dotenv
 import os
 from urllib.parse import urlparse, urljoin
-from models import db, User, Entry
+from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy import Column, String, Integer, Text, DateTime
+import datetime
 
 # Load environment variables
 load_dotenv()
@@ -22,17 +23,41 @@ if database_url.startswith("postgres://"):
     database_url = database_url.replace("postgres://", "postgresql://", 1)
 app.config['SQLALCHEMY_DATABASE_URI'] = database_url
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-db.init_app(app)
+
+db = SQLAlchemy(app)
 migrate = Migrate(app, db)
 login_manager = LoginManager(app)
 login_manager.login_view = 'login'
+
+# Models
+class User(db.Model, UserMixin):
+    __tablename__ = 'user'
+    id = Column(Integer, primary_key=True)
+    username = Column(String(120), unique=True, nullable=False)
+    password_hash = Column(Text, nullable=False)
+
+class Entry(db.Model):
+    __tablename__ = 'entry'
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, nullable=False)
+    addiction_type = Column(String(100), nullable=False)
+    description = Column(String(1000), nullable=False)
+    response = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
 # User loader for Flask-Login
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))
 
-# Create database tables with error handling
+# Safe URL check
+def is_safe_url(target):
+    """Check if the target URL is safe for redirection."""
+    ref_url = urlparse(request.host_url)
+    test_url = urlparse(urljoin(request.host_url, target))
+    return test_url.scheme in ('http', 'https') and ref_url.netloc == test_url.netloc
+
+# Create database tables
 with app.app_context():
     try:
         db.create_all()
@@ -40,43 +65,7 @@ with app.app_context():
         print(f"Database initialization error: {e}")
         raise
 
-def is_safe_url(target):
-    """Check if the target URL is safe for redirection."""
-    ref_url = urlparse(request.host_url)
-    test_url = urlparse(urljoin(request.host_url, target))
-    return test_url.scheme in ('http', 'https') and ref_url.netloc == test_url.netloc
-
-def get_xai_response(user_input):
-    messages = [
-        {"role": "system", "content": (
-            "You are a compassionate addiction support assistant. "
-            "Respond in a calm, supportive, and empathetic tone. "
-            "Avoid giving medical advice. Always suggest professional help if needed."
-        )},
-        {"role": "user", "content": user_input}
-    ]
-    headers = {
-        "Authorization": f"Bearer {XAI_API_KEY}",
-        "Content-Type": "application/json"
-    }
-    payload = {
-        "model": "grok-3",
-        "messages": messages,
-        "temperature": 0.7,
-        "max_tokens": 150
-    }
-    try:
-        response = requests.post(
-            "https://api.x.ai/v1/chat/completions",
-            headers=headers,
-            json=payload
-        )
-        response.raise_for_status()
-        return response.json()["choices"][0]["message"]["content"].strip()
-    except requests.exceptions.RequestException as e:
-        print("xAI API Error:", e)
-        return "I'm sorry, I'm having trouble responding right now. Please reach out to a professional."
-
+# Routes
 @app.route("/register", methods=["GET", "POST"])
 def register():
     if request.method == "POST":
@@ -91,11 +80,16 @@ def register():
         if User.query.filter_by(username=username).first():
             flash("Username already exists.", "error")
             return redirect(url_for("register"))
-        user = User(username=username, password_hash=generate_password_hash(password))
-        db.session.add(user)
-        db.session.commit()
-        flash("Registration successful! Please log in.", "success")
-        return redirect(url_for("login"))
+        try:
+            user = User(username=username, password_hash=generate_password_hash(password, method='scrypt'))
+            db.session.add(user)
+            db.session.commit()
+            flash("Registration successful! Please log in.", "success")
+            return redirect(url_for("login"))
+        except Exception as e:
+            db.session.rollback()
+            flash("Registration failed. Please try again.", "error")
+            return redirect(url_for("register"))
     return render_template("register.html")
 
 @app.route("/login", methods=["GET", "POST"])
@@ -149,6 +143,37 @@ def index():
         return redirect(url_for("index"))
     entries = Entry.query.filter_by(user_id=current_user.id).order_by(Entry.created_at.desc()).all()
     return render_template("index.html", entries=entries)
+
+def get_xai_response(user_input):
+    messages = [
+        {"role": "system", "content": (
+            "You are a compassionate addiction support assistant. "
+            "Respond in a calm, supportive, and empathetic tone. "
+            "Avoid giving medical advice. Always suggest professional help if needed."
+        )},
+        {"role": "user", "content": user_input}
+    ]
+    headers = {
+        "Authorization": f"Bearer {XAI_API_KEY}",
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "model": "grok-3",
+        "messages": messages,
+        "temperature": 0.7,
+        "max_tokens": 150
+    }
+    try:
+        response = requests.post(
+            "https://api.x.ai/v1/chat/completions",
+            headers=headers,
+            json=payload
+        )
+        response.raise_for_status()
+        return response.json()["choices"][0]["message"]["content"].strip()
+    except requests.exceptions.RequestException as e:
+        print("xAI API Error:", e)
+        return "I'm sorry, I'm having trouble responding right now. Please reach out to a professional."
 
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=int(os.getenv("PORT", 5000)))
