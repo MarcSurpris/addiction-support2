@@ -9,8 +9,11 @@ from urllib.parse import urlparse, urljoin
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import Column, String, Integer, Text, DateTime
 import datetime
+import logging
 
-# Load environment variables
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
+
 load_dotenv()
 XAI_API_KEY = os.getenv("XAI_API_KEY")
 if not XAI_API_KEY:
@@ -29,7 +32,6 @@ migrate = Migrate(app, db)
 login_manager = LoginManager(app)
 login_manager.login_view = 'login'
 
-# Models
 class User(db.Model, UserMixin):
     __tablename__ = 'user'
     id = Column(Integer, primary_key=True)
@@ -45,27 +47,22 @@ class Entry(db.Model):
     response = Column(Text, nullable=False)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
-# User loader for Flask-Login
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))
 
-# Safe URL check
 def is_safe_url(target):
-    """Check if the target URL is safe for redirection."""
     ref_url = urlparse(request.host_url)
     test_url = urlparse(urljoin(request.host_url, target))
     return test_url.scheme in ('http', 'https') and ref_url.netloc == test_url.netloc
 
-# Create database tables
 with app.app_context():
     try:
         db.create_all()
     except Exception as e:
-        print(f"Database initialization error: {e}")
+        logger.error(f"Database initialization error: {e}")
         raise
 
-# Routes
 @app.route("/register", methods=["GET", "POST"])
 def register():
     if request.method == "POST":
@@ -88,6 +85,7 @@ def register():
             return redirect(url_for("login"))
         except Exception as e:
             db.session.rollback()
+            logger.error(f"Registration error: {e}")
             flash("Registration failed. Please try again.", "error")
             return redirect(url_for("register"))
     return render_template("register.html")
@@ -172,7 +170,7 @@ def get_xai_response(user_input):
         response.raise_for_status()
         return response.json()["choices"][0]["message"]["content"].strip()
     except requests.exceptions.RequestException as e:
-        print("xAI API Error:", e)
+        logger.error(f"xAI API Error: {e}")
         return "I'm sorry, I'm having trouble responding right now. Please reach out to a professional."
 
 if __name__ == "__main__":
