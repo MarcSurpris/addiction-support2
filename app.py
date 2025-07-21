@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 import os
 from urllib.parse import urlparse, urljoin
 from models import db, User, Entry
+from sqlalchemy import Column, String, Integer, Text, DateTime
 import datetime
 
 # Load environment variables
@@ -38,7 +39,7 @@ with app.app_context():
     except Exception as e:
         print(f"Database initialization error: {e}")
         # Fallback to SQLite if PostgreSQL fails (optional)
-        if "does not exist" in str(e) or "connection" in str(e.lower()):
+        if "does not exist" in str(e) or "connection" in str(e).lower():
             print("Falling back to SQLite or check DATABASE_URL.")
             app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///site.db'
             db.create_all()
