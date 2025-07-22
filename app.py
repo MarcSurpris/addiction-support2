@@ -43,7 +43,7 @@ with app.app_context():
             print("Falling back to SQLite or check DATABASE_URL.")
             app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///site.db'
             db.create_all()
-            print("SQLite database initialized as fallback.", str(e))
+            print("SQLite database initialized as fallback.", {str(e)})
         else:
             raise
 
